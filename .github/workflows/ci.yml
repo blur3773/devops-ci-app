@@ -110,7 +110,21 @@ jobs:
           now=$(date +%s)
           remote=$(ssh -o BatchMode=yes -i ~/.ssh/devops_vm "devops@$VM_HOST" date +%s)
           if (( remote > now + 300 || remote < now - 300 )); then
-            ssh -o BatchMode=yes -i ~/.ssh/devops_vm "devops@$VM_HOST" sudo date -u -s "@$now"
+            if ! ssh -o BatchMode=yes -i ~/.ssh/devops_vm "devops@$VM_HOST" sudo date -u -s "@$now"; then
+              # A cloned VM can have monotonic uptime ahead of the host epoch.
+              # Reboot resets that clock and reads the correct virtual RTC.
+              ssh -o BatchMode=yes -i ~/.ssh/devops_vm "devops@$VM_HOST" sudo reboot || true
+              sleep 3
+              ready=0
+              for attempt in {1..30}; do
+                if remote=$(ssh -o BatchMode=yes -o ConnectTimeout=2 -i ~/.ssh/devops_vm "devops@$VM_HOST" date +%s); then
+                  now=$(date +%s)
+                  if (( remote < now + 300 && remote > now - 300 )); then ready=1; break; fi
+                fi
+                sleep 2
+              done
+              test "$ready" -eq 1
+            fi
           fi
           ssh -o BatchMode=yes -i ~/.ssh/devops_vm "devops@$VM_HOST" date -u
       - name: Deploy with Ansible
