@@ -104,6 +104,15 @@ jobs:
         uses: actions/checkout@v7
         with:
           persist-credentials: false
+      - name: Check VM clock before TLS operations
+        run: |
+          set -euo pipefail
+          now=$(date +%s)
+          remote=$(ssh -o BatchMode=yes -i ~/.ssh/devops_vm "devops@$VM_HOST" date +%s)
+          if (( remote > now + 300 || remote < now - 300 )); then
+            ssh -o BatchMode=yes -i ~/.ssh/devops_vm "devops@$VM_HOST" sudo date -u -s "@$now"
+          fi
+          ssh -o BatchMode=yes -i ~/.ssh/devops_vm "devops@$VM_HOST" date -u
       - name: Deploy with Ansible
         working-directory: ansible
         run: ansible-playbook site.yml -e "app_tag=$GITHUB_SHA"
